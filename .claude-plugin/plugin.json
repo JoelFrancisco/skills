@@ -10,6 +10,10 @@
   "homepage": "https://github.com/JoelFrancisco/skills",
   "repository": "https://github.com/JoelFrancisco/skills",
   "license": "MIT",
-  "keywords": ["claude-code", "skills", "agent"],
+  "keywords": [
+    "claude-code",
+    "skills",
+    "agent"
+  ],
   "skills": []
 }

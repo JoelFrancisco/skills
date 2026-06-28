@@ -39,9 +39,11 @@ shipped skills. Skills under `in-progress` and `deprecated` are never listed.
   native installs can be curated by including or omitting a path.
 - Adding, moving, or retiring a skill now requires a one-line manifest edit, and
   it's easy to forget. Acceptable for a single maintainer.
-- If keeping the list current ever becomes a burden, a small sync script could
-  regenerate it from the `skills/` tree. Deliberately not added now, in keeping
-  with [ADR 0001](0001-no-changesets-or-npm-tooling.md)'s lean philosophy.
+- Keeping the list current is automated by `scripts/sync-skills.mjs`, which
+  regenerates the array from the `skills/` tree (run it after adding/moving/
+  retiring a skill, or `--check` it in CI). It's plain zero-dependency node with
+  no `package.json`, so it stays within
+  [ADR 0001](0001-no-changesets-or-npm-tooling.md)'s lean philosophy.
 
 [mattpocock/skills]: https://github.com/mattpocock/skills
 [vercel-labs/skills]: https://github.com/vercel-labs/skills

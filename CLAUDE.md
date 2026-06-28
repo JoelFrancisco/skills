@@ -15,6 +15,8 @@ repo: a distributable Claude Code plugin whose payload is a set of skills.
 - `docs/creating-skills.md` — template and conventions for writing a skill.
 - `docs/adr/` — architecture decision records. Read before revisiting a
   structural choice; add one when you make a new one.
+- `scripts/sync-skills.mjs` — regenerates `plugin.json`'s `skills` array from the
+  `skills/` tree. Zero-dependency node; `--check` mode for CI.
 
 ## Conventions
 
@@ -39,9 +41,10 @@ repo: a distributable Claude Code plugin whose payload is a set of skills.
 
 ## When adding or moving skills
 
-- Adding a skill: create the folder + `SKILL.md`, then add
-  `"./skills/<category>/<name>"` to the `skills` array in `plugin.json`. The
-  manifest is the source of truth — an unlisted skill doesn't ship.
+- Adding a skill: create the folder + `SKILL.md`, then run
+  `node scripts/sync-skills.mjs` to update `plugin.json` (or add the
+  `"./skills/<category>/<name>"` line by hand). The manifest is the source of
+  truth — an unlisted skill doesn't ship.
 - Promoting from `in-progress` or restoring from `deprecated`: move the folder
   into a live category **and** add its path to `plugin.json`.
 - Retiring a skill: move it to `deprecated` (or delete it) **and** remove its

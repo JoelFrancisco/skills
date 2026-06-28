@@ -60,9 +60,10 @@ manifest, so they're just storage and never ship.
    [reference.md](reference.md) and they'll be pulled in on demand.
    ```
 
-3. Register it: add `"./skills/<category>/<skill-name>"` to the `skills` array in
-   [`.claude-plugin/plugin.json`](.claude-plugin/plugin.json). This is what makes
-   it ship and makes it individually selectable via the `skills` CLI.
+3. Register it: run `node scripts/sync-skills.mjs` to regenerate the `skills`
+   array in [`.claude-plugin/plugin.json`](.claude-plugin/plugin.json) from the
+   tree (or add the `"./skills/<category>/<skill-name>"` line by hand). This is
+   what makes it ship and makes it individually selectable via the `skills` CLI.
 4. Optionally add supporting files (`reference.md`, `scripts/`, etc.) beside `SKILL.md`.
 
 See [docs/creating-skills.md](docs/creating-skills.md) for the full template and conventions.
