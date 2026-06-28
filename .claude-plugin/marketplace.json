@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-marketplace.json",
+  "name": "joel-skills",
+  "owner": {
+    "name": "Joel Francisco",
+    "email": "joelfranciscofilho@gmail.com"
+  },
+  "description": "Joel Francisco's personal agent skills for Claude Code.",
+  "plugins": [
+    {
+      "name": "joel-skills",
+      "source": "./",
+      "description": "Joel Francisco's personal agent skills for Claude Code.",
+      "version": "0.1.0",
+      "author": {
+        "name": "Joel Francisco"
+      },
+      "license": "MIT",
+      "homepage": "https://github.com/JoelFrancisco/skills"
+    }
+  ]
+}

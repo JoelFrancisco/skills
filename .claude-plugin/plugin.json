@@ -1,0 +1,20 @@
+{
+  "name": "joel-skills",
+  "version": "0.1.0",
+  "description": "Joel Francisco's personal agent skills for Claude Code.",
+  "author": {
+    "name": "Joel Francisco",
+    "email": "joelfranciscofilho@gmail.com",
+    "url": "https://github.com/JoelFrancisco"
+  },
+  "homepage": "https://github.com/JoelFrancisco/skills",
+  "repository": "https://github.com/JoelFrancisco/skills",
+  "license": "MIT",
+  "keywords": ["claude-code", "skills", "agent"],
+  "skills": [
+    "./skills/engineering",
+    "./skills/productivity",
+    "./skills/misc",
+    "./skills/personal"
+  ]
+}
