@@ -56,5 +56,7 @@ Short framing: what problem this solves.
 | `in-progress` | WIP — not loaded until promoted to a live category |
 | `deprecated` | retired — kept for reference, not loaded |
 
-Adding a skill to a live category needs **no** manifest edit — it's
-auto-discovered. See [../CLAUDE.md](../CLAUDE.md) for the rules.
+After creating the skill, **register it**: add `"./skills/<category>/<name>"` to
+the `skills` array in [`../.claude-plugin/plugin.json`](../.claude-plugin/plugin.json).
+That's what ships it and makes it individually selectable in the `skills` CLI.
+See [../CLAUDE.md](../CLAUDE.md) for the rules.

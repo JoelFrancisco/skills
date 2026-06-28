@@ -11,10 +11,5 @@
   "repository": "https://github.com/JoelFrancisco/skills",
   "license": "MIT",
   "keywords": ["claude-code", "skills", "agent"],
-  "skills": [
-    "./skills/engineering",
-    "./skills/productivity",
-    "./skills/misc",
-    "./skills/personal"
-  ]
+  "skills": []
 }

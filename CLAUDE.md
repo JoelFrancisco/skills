@@ -7,8 +7,9 @@ repo: a distributable Claude Code plugin whose payload is a set of skills.
 
 - `skills/<category>/<skill-name>/SKILL.md` — the skills themselves.
 - `.claude-plugin/plugin.json` — the plugin manifest. Its `skills` array lists
-  the **category directories** that are loaded; skills inside them are
-  auto-discovered by folder name.
+  **each skill individually** (`./skills/<category>/<name>`). It is the source of
+  truth for what the plugin ships and what the `skills` CLI offers for per-skill
+  selection — a skill that isn't listed doesn't ship.
 - `.claude-plugin/marketplace.json` — marketplace catalog so the repo installs
   via `/plugin marketplace add JoelFrancisco/skills`.
 - `docs/creating-skills.md` — template and conventions for writing a skill.
@@ -38,12 +39,15 @@ repo: a distributable Claude Code plugin whose payload is a set of skills.
 
 ## When adding or moving skills
 
-- Adding a skill to `engineering`/`productivity`/`misc`/`personal`: just create
-  the folder + `SKILL.md`. No manifest edit needed (category dirs are already
-  listed in `plugin.json`).
+- Adding a skill: create the folder + `SKILL.md`, then add
+  `"./skills/<category>/<name>"` to the `skills` array in `plugin.json`. The
+  manifest is the source of truth — an unlisted skill doesn't ship.
 - Promoting from `in-progress` or restoring from `deprecated`: move the folder
-  into a live category — that alone makes it load.
-- Adding a **new** top-level category: add its path to the `skills` array in
-  `plugin.json`.
+  into a live category **and** add its path to `plugin.json`.
+- Retiring a skill: move it to `deprecated` (or delete it) **and** remove its
+  path from `plugin.json`.
 - Bumping what users get: update `version` in both `plugin.json` and
   `marketplace.json`.
+
+See [docs/adr/0003-per-skill-enumeration-in-plugin-json.md](docs/adr/0003-per-skill-enumeration-in-plugin-json.md)
+for why the list is maintained by hand rather than auto-discovered.

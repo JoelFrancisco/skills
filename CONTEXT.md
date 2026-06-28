@@ -12,8 +12,11 @@ Shared vocabulary for this repo, so descriptions of the work stay short.
 - **Category** — a top-level folder under `skills/` grouping related skills
   (`engineering`, `productivity`, `misc`, `personal`, `in-progress`,
   `deprecated`).
-- **Live category** — one listed in `plugin.json`'s `skills` array, so its
-  skills are loaded (`engineering`, `productivity`, `misc`, `personal`).
+- **Live category** — a category whose skills get listed in `plugin.json` and
+  shipped (`engineering`, `productivity`, `misc`, `personal`), versus
+  `in-progress` / `deprecated`, which are never listed.
+- **Registered skill** — a skill whose path appears in `plugin.json`'s `skills`
+  array. Only registered skills ship and are offered by the `skills` CLI.
 - **Model-invoked skill** — fires automatically when its `description` matches
   the task.
 - **User-invoked skill** — triggered explicitly with `/skill-name`. Set
