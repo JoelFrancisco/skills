@@ -12,6 +12,8 @@ repo: a distributable Claude Code plugin whose payload is a set of skills.
 - `.claude-plugin/marketplace.json` — marketplace catalog so the repo installs
   via `/plugin marketplace add JoelFrancisco/skills`.
 - `docs/creating-skills.md` — template and conventions for writing a skill.
+- `docs/adr/` — architecture decision records. Read before revisiting a
+  structural choice; add one when you make a new one.
 
 ## Conventions
 
