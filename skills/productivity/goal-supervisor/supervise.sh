@@ -2,7 +2,7 @@
 # goal-supervisor: supervision tree (one_for_one) para /goal.
 #
 # Camadas:
-#   launchd/tmux            <- mantém ESTE script vivo (opcional, ver SKILL.md)
+#   launchd/systemd/tmux    <- mantém ESTE script vivo (opcional, ver SKILL.md)
 #     supervise.sh          <- política de restart + backoff + detecção de stall
 #       claude -p /goal ... <- worker (sessão pinada por --session-id)
 #         subagentes        <- já sobrevivem sozinhos; o worker os re-adota via transcript
@@ -60,8 +60,25 @@ WORKER_LOG="$SUP_DIR/worker.log"
 log() { printf '%s [supervisor] %s\n' "$(date '+%F %T')" "$*" | tee -a "$SUP_LOG" >&2; }
 
 notify() {
-  command -v osascript >/dev/null 2>&1 && \
-    osascript -e "display notification \"$1\" with title \"goal-supervisor\"" 2>/dev/null || true
+  if command -v osascript >/dev/null 2>&1; then
+    osascript -e "display notification \"$1\" with title \"goal-supervisor\"" 2>/dev/null
+  elif command -v notify-send >/dev/null 2>&1; then
+    notify-send "goal-supervisor" "$1" 2>/dev/null
+  fi
+  true
+}
+
+# mtime portável: GNU stat usa -c %Y, BSD/macOS usa -f %m
+if stat -c %Y / >/dev/null 2>&1; then
+  mtime() { stat -c %Y "$1" 2>/dev/null || echo 0; }
+else
+  mtime() { stat -f %m "$1" 2>/dev/null || echo 0; }
+fi
+
+new_uuid() {
+  { command -v uuidgen >/dev/null 2>&1 && uuidgen; } \
+    || cat /proc/sys/kernel/random/uuid 2>/dev/null \
+    || python3 -c 'import uuid; print(uuid.uuid4())'
 }
 
 # Transcript fica em ~/.claude/projects/<cwd com / e . trocados por ->/<sid>.jsonl
@@ -117,7 +134,7 @@ $SUPERVISOR_BRIEF"
     claude -p --resume "$SID" ${CLAUDE_EXTRA[@]+"${CLAUDE_EXTRA[@]}"} "$PROMPT" >>"$WORKER_LOG" 2>&1 &
     WPID=$!
   else
-    SID=$(uuidgen | tr '[:upper:]' '[:lower:]')
+    SID=$(new_uuid | tr '[:upper:]' '[:lower:]')
     echo "$SID" >"$SID_FILE"
     PROMPT="/goal $GOAL_MD
 
@@ -133,8 +150,8 @@ $SUPERVISOR_BRIEF"
     sleep 30
     [ -f "$DONE_FILE" ] && break
     if [ "$STALL_TIMEOUT" -gt 0 ]; then
-      last=$(stat -f %m "$TRANSCRIPT" 2>/dev/null || echo 0)
-      lw=$(stat -f %m "$WORKER_LOG" 2>/dev/null || echo 0)
+      last=$(mtime "$TRANSCRIPT")
+      lw=$(mtime "$WORKER_LOG")
       [ "$lw" -gt "$last" ] && last=$lw
       if [ "$last" -gt 0 ] && [ $(($(date +%s) - last)) -gt "$STALL_TIMEOUT" ]; then
         log "worker $WPID sem atividade há mais de ${STALL_TIMEOUT}s; matando para reiniciar"

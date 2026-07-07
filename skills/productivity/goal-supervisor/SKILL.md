@@ -55,10 +55,28 @@ nohup <caminho-desta-skill>/supervise.sh goals/<slug>/goal.md \
 
 ## Supervisor do supervisor (raiz da árvore)
 
-Para sobreviver a logout/reboot, rode o próprio supervise.sh sob launchd com
-`KeepAlive`. Gere `~/Library/LaunchAgents/com.user.goal-<slug>.plist` com
-`ProgramArguments` apontando para o supervise.sh + goal.md,
-`WorkingDirectory` no repo, `RunAtLoad` e `KeepAlive: {SuccessfulExit: false}`
-(assim o launchd para de religar quando o supervisor sai com 0 = DONE), e
-carregue com `launchctl load`. Alternativa mais simples: rodar dentro de
-`tmux new -d -s goal-<slug> '...supervise.sh ...'`.
+Para sobreviver a logout/reboot, rode o próprio supervise.sh sob o init do
+sistema. A semântica desejada nas duas plataformas é a mesma: religar o
+supervisor se ele morrer com erro, e PARAR de religar quando ele sai com 0
+(goal concluído).
+
+**macOS (launchd):** gere `~/Library/LaunchAgents/com.user.goal-<slug>.plist`
+com `ProgramArguments` apontando para o supervise.sh + goal.md,
+`WorkingDirectory` no repo, `RunAtLoad` e `KeepAlive: {SuccessfulExit: false}`,
+e carregue com `launchctl load`.
+
+**Linux (systemd user unit):** a forma rápida é transiente:
+
+```bash
+systemd-run --user --unit=goal-<slug> \
+  --property=Restart=on-failure --property=RestartSec=30 \
+  --working-directory=<repo> \
+  <caminho-desta-skill>/supervise.sh goals/<slug>/goal.md -- --permission-mode acceptEdits
+# acompanhar: journalctl --user -u goal-<slug> -f
+```
+
+Para sobreviver a logout, habilite linger: `loginctl enable-linger $USER`.
+(Equivalente persistente: um `.service` em `~/.config/systemd/user/` com
+`Restart=on-failure` + `WorkingDirectory` e `systemctl --user enable --now`.)
+
+Alternativa simples nas duas plataformas: `tmux new -d -s goal-<slug> '...supervise.sh ...'`.
