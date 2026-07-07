@@ -1,6 +1,6 @@
 {
   "name": "joel-skills",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Joel Francisco's personal agent skills for Claude Code.",
   "author": {
     "name": "Joel Francisco",
@@ -15,5 +15,7 @@
     "skills",
     "agent"
   ],
-  "skills": []
+  "skills": [
+    "./skills/productivity/goal-supervisor"
+  ]
 }
