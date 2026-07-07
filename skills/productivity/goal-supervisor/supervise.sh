@@ -1,26 +1,26 @@
 #!/usr/bin/env bash
-# goal-supervisor: supervision tree (one_for_one) para /goal.
+# goal-supervisor: supervision tree (one_for_one) for /goal.
 #
-# Camadas:
-#   launchd/systemd/tmux    <- mantém ESTE script vivo (opcional, ver SKILL.md)
-#     supervise.sh          <- política de restart + backoff + detecção de stall
-#       claude -p /goal ... <- worker (sessão pinada por --session-id)
-#         subagentes        <- já sobrevivem sozinhos; o worker os re-adota via transcript
+# Layers:
+#   launchd/systemd/tmux    <- keeps THIS script alive (optional, see SKILL.md)
+#     supervise.sh          <- restart policy + backoff + stall detection
+#       claude -p /goal ... <- worker (session pinned via --session-id)
+#         subagents         <- survive on their own; the worker re-adopts them via transcript
 #
-# Estado de retomada, em ordem de preferência:
-#   1. transcript da sessão (claude -p --resume $SID) — contexto completo
-#   2. goals/<slug>/.supervisor/checkpoint.md — handoff escrito pelo próprio goal
-#      (mesmo mecanismo da skill claude-handoff), usado se o resume falhar
+# Resume state, in order of preference:
+#   1. session transcript (claude -p --resume $SID) — full context
+#   2. goals/<slug>/.supervisor/checkpoint.md — handoff written by the goal itself
+#      (same mechanism as the claude-handoff skill), used if resume fails
 #
-# Uso:
-#   supervise.sh <goal.md> [opções] [-- args extras para claude]
-#     --max-restarts N   restarts permitidos dentro da janela (default 10)
-#     --window S         janela da política de restart, em segundos (default 3600)
-#     --stall S          segundos sem atividade no transcript => kill e restart
-#                        (default 1800; 0 desliga)
-#     --fresh            ignora sessão anterior e começa do zero (mantém checkpoint)
+# Usage:
+#   supervise.sh <goal.md> [options] [-- extra args for claude]
+#     --max-restarts N   restarts allowed within the window (default 10)
+#     --window S         restart-policy window, in seconds (default 3600)
+#     --stall S          seconds without transcript activity => kill and restart
+#                        (default 1800; 0 disables)
+#     --fresh            ignore the previous session and start over (keeps checkpoint)
 #
-# O goal termina quando o worker cria .supervisor/DONE (instruído via prompt).
+# The goal finishes when the worker creates .supervisor/DONE (instructed via prompt).
 
 set -uo pipefail
 
@@ -38,12 +38,12 @@ while [ $# -gt 0 ]; do
     --stall)        STALL_TIMEOUT="$2"; shift 2 ;;
     --fresh)        FRESH=1; shift ;;
     --)             shift; CLAUDE_EXTRA=("$@"); break ;;
-    -*)             echo "opção desconhecida: $1" >&2; exit 2 ;;
+    -*)             echo "unknown option: $1" >&2; exit 2 ;;
     *)              GOAL_MD="$1"; shift ;;
   esac
 done
 
-[ -n "$GOAL_MD" ] && [ -f "$GOAL_MD" ] || { echo "uso: supervise.sh <goal.md> [opções] [-- claude args]" >&2; exit 2; }
+[ -n "$GOAL_MD" ] && [ -f "$GOAL_MD" ] || { echo "usage: supervise.sh <goal.md> [options] [-- claude args]" >&2; exit 2; }
 
 GOAL_MD="$(cd "$(dirname "$GOAL_MD")" && pwd)/$(basename "$GOAL_MD")"
 GOAL_DIR="$(dirname "$GOAL_MD")"
@@ -68,7 +68,7 @@ notify() {
   true
 }
 
-# mtime portável: GNU stat usa -c %Y, BSD/macOS usa -f %m
+# Portable mtime: GNU stat uses -c %Y, BSD/macOS uses -f %m
 if stat -c %Y / >/dev/null 2>&1; then
   mtime() { stat -c %Y "$1" 2>/dev/null || echo 0; }
 else
@@ -81,7 +81,7 @@ new_uuid() {
     || python3 -c 'import uuid; print(uuid.uuid4())'
 }
 
-# Transcript fica em ~/.claude/projects/<cwd com / e . trocados por ->/<sid>.jsonl
+# Transcript lives at ~/.claude/projects/<cwd with / and . replaced by ->/<sid>.jsonl
 transcript_path() {
   local proj="${PWD//[\/.]/-}"
   echo "$HOME/.claude/projects/$proj/$1.jsonl"
@@ -89,28 +89,28 @@ transcript_path() {
 
 WPID=""
 cleanup() {
-  log "supervisor encerrando; matando worker ${WPID:-<nenhum>}"
+  log "supervisor shutting down; killing worker ${WPID:-<none>}"
   [ -n "$WPID" ] && kill -TERM "$WPID" 2>/dev/null
   exit 130
 }
 trap cleanup INT TERM
 
-SUPERVISOR_BRIEF="Instruções do supervisor: você roda sob um supervisor que reinicia o processo se ele morrer ou travar.
-1. Após CADA etapa concluída do plano, atualize $CHECKPOINT com um handoff curto: o que já foi feito, o que falta, próximo passo, e caminhos de arquivos relevantes. Sobrescreva o arquivo, não acumule.
-2. Quando a condição de done do goal for atingida e verificada, crie o arquivo $DONE_FILE (conteúdo livre, ex.: resumo do resultado) — é assim que o supervisor sabe parar.
-3. Não peça confirmações interativas; se bloquear em algo que só o humano resolve, escreva o bloqueio em $CHECKPOINT e crie $SUP_DIR/BLOCKED, depois encerre."
+SUPERVISOR_BRIEF="Supervisor instructions: you are running under a supervisor that restarts the process if it dies or hangs.
+1. After EACH completed step of the plan, update $CHECKPOINT with a short handoff: what has been done, what remains, the next step, and relevant file paths. Overwrite the file, do not accumulate.
+2. When the goal's done condition is met and verified, create the file $DONE_FILE (free-form content, e.g. a summary of the result) — that is how the supervisor knows to stop.
+3. Do not ask for interactive confirmations; if you get blocked on something only the human can resolve, write the blocker to $CHECKPOINT and create $SUP_DIR/BLOCKED, then exit."
 
 RESTART_STAMPS=()
 attempt=0
 
 while [ ! -f "$DONE_FILE" ]; do
   if [ -f "$SUP_DIR/BLOCKED" ]; then
-    log "worker sinalizou BLOCKED; parando supervisão (veja $CHECKPOINT)"
-    notify "Goal bloqueado: precisa de input humano"
+    log "worker signaled BLOCKED; stopping supervision (see $CHECKPOINT)"
+    notify "Goal blocked: needs human input"
     exit 3
   fi
 
-  # Política de intensidade de restart (estilo Erlang max_restarts/max_seconds)
+  # Restart intensity policy (Erlang-style max_restarts/max_seconds)
   now=$(date +%s)
   PRUNED=()
   for t in ${RESTART_STAMPS[@]+"${RESTART_STAMPS[@]}"}; do
@@ -118,8 +118,8 @@ while [ ! -f "$DONE_FILE" ]; do
   done
   RESTART_STAMPS=(${PRUNED[@]+"${PRUNED[@]}"})
   if [ "${#RESTART_STAMPS[@]}" -ge "$MAX_RESTARTS" ]; then
-    log "limite de $MAX_RESTARTS restarts em ${WINDOW}s atingido; desistindo"
-    notify "Goal supervisor desistiu após $MAX_RESTARTS restarts"
+    log "limit of $MAX_RESTARTS restarts within ${WINDOW}s reached; giving up"
+    notify "Goal supervisor gave up after $MAX_RESTARTS restarts"
     exit 1
   fi
   RESTART_STAMPS+=("$now")
@@ -127,10 +127,10 @@ while [ ! -f "$DONE_FILE" ]; do
   if [ -s "$SID_FILE" ]; then
     SID=$(cat "$SID_FILE")
     attempt=$((attempt + 1))
-    PROMPT="O processo que executava este goal morreu e o supervisor o reiniciou (tentativa $attempt). Retome de onde parou: releia $GOAL_MD, o plano do goal e o checkpoint em $CHECKPOINT (se existir); confira no repositório o que já está concluído de fato antes de refazer qualquer coisa; então continue a execução.
+    PROMPT="The process running this goal died and the supervisor restarted it (attempt $attempt). Pick up where it left off: re-read $GOAL_MD, the goal's plan, and the checkpoint at $CHECKPOINT (if it exists); check in the repository what is actually already done before redoing anything; then continue execution.
 
 $SUPERVISOR_BRIEF"
-    log "retomando sessão $SID (tentativa $attempt)"
+    log "resuming session $SID (attempt $attempt)"
     claude -p --resume "$SID" ${CLAUDE_EXTRA[@]+"${CLAUDE_EXTRA[@]}"} "$PROMPT" >>"$WORKER_LOG" 2>&1 &
     WPID=$!
   else
@@ -139,12 +139,12 @@ $SUPERVISOR_BRIEF"
     PROMPT="/goal $GOAL_MD
 
 $SUPERVISOR_BRIEF"
-    log "iniciando goal em sessão nova $SID"
+    log "starting goal in new session $SID"
     claude -p --session-id "$SID" ${CLAUDE_EXTRA[@]+"${CLAUDE_EXTRA[@]}"} "$PROMPT" >>"$WORKER_LOG" 2>&1 &
     WPID=$!
   fi
 
-  # Monitor: espera o worker com detecção de stall via mtime do transcript
+  # Monitor: wait for the worker with stall detection via transcript mtime
   TRANSCRIPT=$(transcript_path "$SID")
   while kill -0 "$WPID" 2>/dev/null; do
     sleep 30
@@ -154,7 +154,7 @@ $SUPERVISOR_BRIEF"
       lw=$(mtime "$WORKER_LOG")
       [ "$lw" -gt "$last" ] && last=$lw
       if [ "$last" -gt 0 ] && [ $(($(date +%s) - last)) -gt "$STALL_TIMEOUT" ]; then
-        log "worker $WPID sem atividade há mais de ${STALL_TIMEOUT}s; matando para reiniciar"
+        log "worker $WPID inactive for more than ${STALL_TIMEOUT}s; killing to restart"
         kill -TERM "$WPID" 2>/dev/null
         sleep 15
         kill -KILL "$WPID" 2>/dev/null
@@ -166,23 +166,23 @@ $SUPERVISOR_BRIEF"
   WPID=""
 
   if [ -f "$DONE_FILE" ]; then
-    log "goal concluído (DONE presente); encerrando"
-    notify "Goal concluído: $(basename "$GOAL_DIR")"
+    log "goal done (DONE present); exiting"
+    notify "Goal done: $(basename "$GOAL_DIR")"
     exit 0
   fi
 
-  # Se o resume falhou imediatamente 2x seguidas (transcript corrompido?),
-  # cai para o mecanismo de handoff: sessão nova semeada pelo checkpoint.
+  # If resume failed with no transcript on disk (corrupted?), fall back to the
+  # handoff mechanism: a fresh session seeded from the checkpoint.
   if [ "$rc" -ne 0 ] && [ -s "$SID_FILE" ] && [ ! -s "$(transcript_path "$(cat "$SID_FILE")")" ]; then
-    log "transcript da sessão inacessível; descartando sessão e usando checkpoint como handoff"
+    log "session transcript unreachable; discarding session and using checkpoint as handoff"
     rm -f "$SID_FILE"
   fi
 
   backoff=$((5 * (2 ** (attempt < 6 ? attempt : 6))))
   [ "$backoff" -gt 300 ] && backoff=300
-  log "worker saiu rc=$rc sem DONE; novo restart em ${backoff}s"
+  log "worker exited rc=$rc without DONE; next restart in ${backoff}s"
   sleep "$backoff"
 done
 
-log "goal concluído"
+log "goal done"
 exit 0
