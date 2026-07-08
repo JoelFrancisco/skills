@@ -1,6 +1,6 @@
 ---
 name: goal-supervisor
-description: Run a goal (/goal) under a supervision tree that restarts it from where it stopped whenever the process dies or hangs.
+description: Run a goal (/goal) or a Workflow script under a supervision tree that restarts it from where it stopped whenever the process dies or hangs.
 argument-hint: "goals/<slug>/goal.md [-- extra args for claude, e.g. --permission-mode acceptEdits]"
 disable-model-invocation: true
 ---
@@ -63,6 +63,34 @@ nohup "<path-to-this-skill>/supervise.sh" "goals/<slug>/goal.md" \
 - `--max-restarts N` / `--window S` — restart intensity (default 10 restarts per 3600s, not counting the initial launch); once exceeded, it gives up, writes `GAVE_UP`, and notifies.
 - `--stall S` — no session-transcript activity for S seconds → kill and restart (default 3600; 0 disables). Inactive while the transcript file is not found, so a path mismatch never kills a healthy worker. Raise it for goals with long silent phases (big builds, long subagent runs).
 - `--fresh` — discard the previous session and outcome sentinels and start over (keeps the checkpoint as memory).
+
+## Workflows (`--kind workflow`)
+
+Long Workflow runs die when the conversation that hosts them compacts — the
+fix is isolation: run the workflow in a dedicated supervised session whose
+conversation stays tiny, so compaction never fires. Same tree, different
+worker:
+
+```bash
+nohup "<path-to-this-skill>/supervise.sh" "path/to/workflow.js" --kind workflow \
+  -- --permission-mode bypassPermissions --model sonnet >/dev/null 2>&1 &
+```
+
+- The runner session calls the Workflow tool on the script, persists the
+  runId to `.supervisor/workflow-run-id`, waits for completion, writes
+  `.supervisor/result.md` and `DONE`.
+- On death, the resumed session calls Workflow with `resumeFromRunId` from
+  that file: completed `agent()` calls replay from the journal cache and only
+  the remainder runs live. The resume continues under the same runId/journal.
+- The journal cache is session-bound: if the supervisor has to discard the
+  session (unresumable transcript), the workflow restarts from scratch.
+- **Permissions:** `acceptEdits` is NOT enough — executing a dynamic workflow
+  script from a headless session hits an interactive approval and the run
+  dies on the spot. Use `--permission-mode bypassPermissions` (validated), or
+  a permission allowlist covering the Workflow tool if you want something
+  narrower.
+- Validated end-to-end: SIGKILL mid-run at stage 3/12 → resume → 3 stages
+  from cache + 9 live, full result delivered.
 
 ## Supervisor of the supervisor (root of the tree)
 

@@ -1,13 +1,19 @@
 #!/usr/bin/env bash
-# goal-supervisor: one_for_one supervisor for /goal (see SKILL.md for the tree).
+# goal-supervisor: one_for_one supervisor for /goal and Workflow runs
+# (see SKILL.md for the tree).
 #
-# Runs `claude -p "/goal <goal.md>"` pinned to a session UUID; if the worker
-# dies without creating .supervisor/DONE, relaunches with `claude -p --resume`.
-# If the session becomes unresumable, falls back to a fresh session seeded
-# from .supervisor/checkpoint.md (handoff written by the goal itself).
+# Runs a claude worker pinned to a session UUID; if the worker dies without
+# creating .supervisor/DONE, relaunches with `claude -p --resume`.
+#   kind=goal (default): worker runs `/goal <goal.md>`; unresumable sessions
+#     fall back to a fresh session seeded from .supervisor/checkpoint.md.
+#   kind=workflow: worker calls the Workflow tool on <script.js>, persists the
+#     runId to .supervisor/workflow-run-id, and resumes with resumeFromRunId
+#     (journal prefix cache). The cache is session-bound: a discarded session
+#     restarts the workflow from scratch.
 #
 # Usage:
-#   supervise.sh <goal.md> [options] [-- extra args for claude]
+#   supervise.sh <goal.md|workflow.js> [options] [-- extra args for claude]
+#     --kind K           goal (default) or workflow
 #     --max-restarts N   restarts allowed within the window (default 10)
 #     --window S         restart-policy window, in seconds (default 3600)
 #     --stall S          seconds without transcript activity => kill and restart
@@ -25,6 +31,7 @@
 set -uo pipefail
 
 GOAL_MD=""
+KIND="goal"
 MAX_RESTARTS=10
 WINDOW=3600
 STALL_TIMEOUT=3600
@@ -33,6 +40,7 @@ CLAUDE_EXTRA=()
 
 while [ $# -gt 0 ]; do
   case "$1" in
+    --kind)         KIND="$2"; shift 2 ;;
     --max-restarts) MAX_RESTARTS="$2"; shift 2 ;;
     --window)       WINDOW="$2"; shift 2 ;;
     --stall)        STALL_TIMEOUT="$2"; shift 2 ;;
@@ -43,7 +51,8 @@ while [ $# -gt 0 ]; do
   esac
 done
 
-[ -n "$GOAL_MD" ] && [ -f "$GOAL_MD" ] || { echo "usage: supervise.sh <goal.md> [options] [-- claude args]" >&2; exit 2; }
+[ -n "$GOAL_MD" ] && [ -f "$GOAL_MD" ] || { echo "usage: supervise.sh <goal.md|workflow.js> [options] [-- claude args]" >&2; exit 2; }
+case "$KIND" in goal|workflow) ;; *) echo "invalid --kind: $KIND (goal|workflow)" >&2; exit 2 ;; esac
 
 GOAL_MD="$(cd "$(dirname "$GOAL_MD")" && pwd)/$(basename "$GOAL_MD")"
 GOAL_DIR="$(dirname "$GOAL_MD")"
@@ -54,10 +63,12 @@ DONE_FILE="$SUP_DIR/DONE"
 BLOCKED_FILE="$SUP_DIR/BLOCKED"
 GAVE_UP_FILE="$SUP_DIR/GAVE_UP"
 CHECKPOINT="$SUP_DIR/checkpoint.md"
+RUNID_FILE="$SUP_DIR/workflow-run-id"
+RESULT_FILE="$SUP_DIR/result.md"
 SUP_LOG="$SUP_DIR/supervisor.log"
 WORKER_LOG="$SUP_DIR/worker.log"
 
-[ "$FRESH" = 1 ] && rm -f "$SID_FILE" "$DONE_FILE" "$BLOCKED_FILE" "$GAVE_UP_FILE"
+[ "$FRESH" = 1 ] && rm -f "$SID_FILE" "$DONE_FILE" "$BLOCKED_FILE" "$GAVE_UP_FILE" "$RUNID_FILE"
 
 log() { printf '%s [supervisor] %s\n' "$(date '+%F %T')" "$*" | tee -a "$SUP_LOG" >&2; }
 
@@ -107,6 +118,12 @@ SUPERVISOR_BRIEF="Supervisor instructions: you are running under a supervisor th
 2. When the goal's done condition is met and verified, create the file $DONE_FILE (free-form content, e.g. a summary of the result) — that is how the supervisor knows to stop.
 3. Do not ask for interactive confirmations; if you get blocked on something only the human can resolve, write the blocker to $CHECKPOINT and create $BLOCKED_FILE, then exit."
 
+WORKFLOW_BRIEF="Supervisor instructions: you are a workflow runner under a supervisor that restarts this session if it dies or hangs.
+1. Immediately after the Workflow tool call returns its runId, write that runId (one line, nothing else) to $RUNID_FILE — overwrite it on every new run, including resumed runs, so the supervisor can always resume from the latest run.
+2. Do NOT end your turn while the workflow is running: it executes in the background and the harness notifies you when it finishes; if you need to wait actively, wait — ending the turn kills the run.
+3. When the workflow completes, write a short summary of its return value to $RESULT_FILE and create the file $DONE_FILE — that is how the supervisor knows to stop.
+4. Do not ask for interactive confirmations; if the workflow fails irrecoverably or needs a human decision, write why to $CHECKPOINT and create $BLOCKED_FILE, then exit."
+
 RESTART_STAMPS=()
 started_once=0   # the initial launch is a start, not a restart
 attempt=0        # resumes of the current session
@@ -146,9 +163,15 @@ while [ ! -f "$DONE_FILE" ]; do
   if [ -s "$SID_FILE" ]; then
     SID=$(cat "$SID_FILE")
     attempt=$((attempt + 1))
-    PROMPT="The process running this goal died and the supervisor restarted it (attempt $attempt). Pick up where it left off: re-read $GOAL_MD, the goal's plan, and the checkpoint at $CHECKPOINT (if it exists); check in the repository what is actually already done before redoing anything; then continue execution.
+    if [ "$KIND" = workflow ]; then
+      PROMPT="The session running this workflow died and the supervisor restarted it (attempt $attempt). Read $RUNID_FILE: if it contains a runId, call the Workflow tool with {scriptPath: \"$GOAL_MD\", resumeFromRunId: \"<that runId>\"} — completed agent calls return cached results from the journal and only the remainder runs live. If the file is missing or empty, call Workflow with {scriptPath: \"$GOAL_MD\"} to start fresh.
+
+$WORKFLOW_BRIEF"
+    else
+      PROMPT="The process running this goal died and the supervisor restarted it (attempt $attempt). Pick up where it left off: re-read $GOAL_MD, the goal's plan, and the checkpoint at $CHECKPOINT (if it exists); check in the repository what is actually already done before redoing anything; then continue execution.
 
 $SUPERVISOR_BRIEF"
+    fi
     log "resuming session $SID (attempt $attempt)"
     LAUNCHED_AT=$(date +%s)
     claude -p --resume "$SID" ${CLAUDE_EXTRA[@]+"${CLAUDE_EXTRA[@]}"} "$PROMPT" >>"$WORKER_LOG" 2>&1 &
@@ -157,14 +180,23 @@ $SUPERVISOR_BRIEF"
     SID=$(new_uuid | tr '[:upper:]' '[:lower:]')
     echo "$SID" >"$SID_FILE" || { log "cannot write $SID_FILE"; exit 1; }
     attempt=0
-    CHECKPOINT_HINT=""
-    [ -s "$CHECKPOINT" ] && CHECKPOINT_HINT="A previous attempt at this goal left a handoff at $CHECKPOINT — read it first, check in the repository what is actually already done, and continue from there instead of starting over.
+    if [ "$KIND" = workflow ]; then
+      # runId caches are session-bound; a fresh session must start over
+      rm -f "$RUNID_FILE"
+      PROMPT="Run the workflow script at $GOAL_MD by calling the Workflow tool with {scriptPath: \"$GOAL_MD\"}.
+
+$WORKFLOW_BRIEF"
+      log "starting workflow in new session $SID"
+    else
+      CHECKPOINT_HINT=""
+      [ -s "$CHECKPOINT" ] && CHECKPOINT_HINT="A previous attempt at this goal left a handoff at $CHECKPOINT — read it first, check in the repository what is actually already done, and continue from there instead of starting over.
 
 "
-    PROMPT="/goal $GOAL_MD
+      PROMPT="/goal $GOAL_MD
 
 $CHECKPOINT_HINT$SUPERVISOR_BRIEF"
-    log "starting goal in new session $SID"
+      log "starting goal in new session $SID"
+    fi
     LAUNCHED_AT=$(date +%s)
     claude -p --session-id "$SID" ${CLAUDE_EXTRA[@]+"${CLAUDE_EXTRA[@]}"} "$PROMPT" >>"$WORKER_LOG" 2>&1 &
     WPID=$!
@@ -228,10 +260,10 @@ $CHECKPOINT_HINT$SUPERVISOR_BRIEF"
   fi
   if [ -s "$SID_FILE" ]; then
     if [ ! -s "$TRANSCRIPT" ]; then
-      log "session transcript unreachable; discarding session and falling back to checkpoint handoff"
+      log "session transcript unreachable; discarding session ($KIND falls back to a fresh start)"
       rm -f "$SID_FILE"; fastfails=0
     elif [ "$fastfails" -ge 3 ]; then
-      log "3 consecutive fast failures resuming; discarding session and falling back to checkpoint handoff"
+      log "3 consecutive fast failures resuming; discarding session ($KIND falls back to a fresh start)"
       rm -f "$SID_FILE"; fastfails=0
     fi
   fi
