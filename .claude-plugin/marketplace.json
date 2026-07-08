@@ -11,7 +11,7 @@
       "name": "joel-skills",
       "source": "./",
       "description": "Joel Francisco's personal agent skills for Claude Code.",
-      "version": "0.4.0",
+      "version": "0.4.1",
       "author": {
         "name": "Joel Francisco"
       },

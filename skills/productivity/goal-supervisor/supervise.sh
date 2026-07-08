@@ -67,6 +67,7 @@ RUNID_FILE="$SUP_DIR/workflow-run-id"
 RESULT_FILE="$SUP_DIR/result.md"
 SUP_LOG="$SUP_DIR/supervisor.log"
 WORKER_LOG="$SUP_DIR/worker.log"
+CANONICAL_PWD="$(cd "$PWD" && pwd -P)" || { echo "cannot resolve cwd: $PWD" >&2; exit 1; }
 
 [ "$FRESH" = 1 ] && rm -f "$SID_FILE" "$DONE_FILE" "$BLOCKED_FILE" "$GAVE_UP_FILE" "$RUNID_FILE"
 
@@ -97,7 +98,7 @@ new_uuid() {
 
 # Transcript lives at ~/.claude/projects/<cwd with / and . replaced by ->/<sid>.jsonl
 transcript_path() {
-  local proj="${PWD//[\/.]/-}"
+  local proj="${CANONICAL_PWD//[\/.]/-}"
   echo "$HOME/.claude/projects/$proj/$1.jsonl"
 }
 
