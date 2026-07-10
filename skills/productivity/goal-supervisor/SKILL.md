@@ -41,11 +41,35 @@ supervisor exits 0 immediately — resolve the blocker and remove the sentinel
 
 ## Invocation
 
+**Prefer the daemon.** `agent-supervisord` (the Rust daemon this script
+prototyped) supervises the same sentinel protocol with strictly better
+semantics: a model/quota wall becomes BLOCKED immediately instead of burning
+the restart budget (the bash script retries into the wall), plus restart
+types, groups, mailbox `call`/`cast`, and a self-watchdog. Route through it
+whenever it is up; fall back to supervise.sh when it is not.
+
 1. Decide the headless permission mode with the user's intent in mind — under
    `-p` there are no interactive prompts, so a goal without
    `--permission-mode acceptEdits` (or `bypassPermissions`, if the user asks
-   for it) stalls on the first denied edit. Pass it through after `--`.
-2. Launch in the background, outside the current session's process tree:
+   for it) stalls on the first denied edit. The daemon's per-kind defaults are
+   goal→acceptEdits, workflow→bypassPermissions; pass `--claude-arg` pairs to
+   override.
+2. If `agentctl ping` answers, add + start the job. `--workdir` must be the
+   goal's OWN directory (that is where `.supervisor/` lives and it must not be
+   shared between goals; the worker still finds the repo's CLAUDE.md via the
+   ancestor walk):
+
+```bash
+agentctl add --name goal-<slug> --kind goal \
+  --target "<abs path>/goals/<slug>/goal.md" \
+  --workdir "<abs path>/goals/<slug>" \
+  --claude-arg=--permission-mode --claude-arg=bypassPermissions \
+  --start
+```
+
+   (`--kind workflow` for a Workflow script target.) Only if the daemon is
+   down, launch the bash fallback in the background, outside the current
+   session's process tree:
 
 ```bash
 nohup "<path-to-this-skill>/supervise.sh" "goals/<slug>/goal.md" \
@@ -53,10 +77,12 @@ nohup "<path-to-this-skill>/supervise.sh" "goals/<slug>/goal.md" \
 ```
 
 3. Tell the user where to follow along, and which sentinel files signal the
-   outcome:
-   - `tail -f goals/<slug>/.supervisor/supervisor.log` — supervisor events
+   outcome (same paths under both runners):
+   - `agentctl status goal-<slug>` / `agentctl logs goal-<slug> -f` — daemon view
    - `tail -f goals/<slug>/.supervisor/worker.log` — claude output
    - `.supervisor/DONE` / `BLOCKED` / `GAVE_UP` — outcome sentinels (above)
+   - steering a live job: `agentctl cast goal-<slug> "<instruction>"`
+     (delivered at its next turn; daemon only)
 
 ## supervise.sh options
 
