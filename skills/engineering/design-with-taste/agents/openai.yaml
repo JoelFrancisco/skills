@@ -1,0 +1,4 @@
+interface:
+  display_name: "Design with Taste"
+  short_description: "Apply T3 Code’s restrained interface taste"
+  default_prompt: "Use $design-with-taste to refine this interface with the documented T3 Code taste."
