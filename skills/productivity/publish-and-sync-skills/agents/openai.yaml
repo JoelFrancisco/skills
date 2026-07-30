@@ -1,0 +1,4 @@
+interface:
+  display_name: "Publish and Sync Skills"
+  short_description: "Publish and sync skills across five agents"
+  default_prompt: "Use $publish-and-sync-skills to release this skill through JoelFrancisco/skills and sync it across my five agent harnesses."
