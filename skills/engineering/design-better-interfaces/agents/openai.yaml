@@ -1,4 +1,4 @@
 interface:
   display_name: "Design Better Interfaces"
   short_description: "Design usable, coherent, verified interfaces"
-  default_prompt: "Use $design-better-interfaces to design and verify this product interface end to end."
+  default_prompt: "Use $design-better-interfaces in the requested review, design, or implementation mode and report quality-gate evidence."
