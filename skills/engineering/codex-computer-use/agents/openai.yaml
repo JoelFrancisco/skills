@@ -1,0 +1,4 @@
+interface:
+  display_name: "Codex Computer Use"
+  short_description: "Delegate browser/UI verification to Codex"
+  default_prompt: "Use $codex-computer-use to verify this UI change in a real browser via Codex and report only PASS/FAIL per checkpoint."
